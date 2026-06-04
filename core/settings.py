@@ -155,6 +155,8 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
 }
 
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:3000',  # Lovable frontend in development
-]
+# CORS_ALLOWED_ORIGINS = [
+#     'http://localhost:3000',  # Lovable frontend in development
+# ]
+
+CORS_ALLOW_ALL_ORIGINS = True 
