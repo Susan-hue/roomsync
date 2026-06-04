@@ -8,6 +8,7 @@ from django.db import transaction
 from .models import Booking, RoundRobinQueue
 from .serializers import BookingSerializer
 from rooms.models import Room
+from notifications.models import Notification
 
 
 class ListMyBookingsView(APIView):
@@ -115,7 +116,15 @@ class CreateBookingView(APIView):
         if serializer.is_valid():
             booking = serializer.save(user=request.user, status='confirmed')
 
-            # Step 6 — Update round-robin queue
+            # Step 6 — Create confirmation notification
+            Notification.objects.create(
+                user=request.user,
+                booking=booking,
+                type='confirmed',
+                message=f'Your booking for {room.name} on {date} from {start_time} to {end_time} has been confirmed.'
+            )
+
+            # Step 7 — Update round-robin queue
             queue_entry.booking_count += 1
             queue_entry.last_booked_at = timezone.now()
             queue_entry.save()
@@ -177,6 +186,14 @@ class CancelBookingView(APIView):
 
         booking.status = 'cancelled'
         booking.save()
+
+        # Create cancellation notification
+        Notification.objects.create(
+            user=booking.user,
+            booking=booking,
+            type='cancelled',
+            message=f'Your booking for {booking.room.name} on {booking.date} has been cancelled.'
+        )
 
         try:
             queue_entry = RoundRobinQueue.objects.get(

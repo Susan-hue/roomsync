@@ -1,129 +1,75 @@
+from datetime import timedelta
 from django.utils import timezone
-from django.contrib.auth import get_user_model
 from django.db.models import Count
-from django.db.models.functions import TruncDate
-
-from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAdminUser
 
-from .models import AnalyticsEvent
-from .serializers import (
-    AnalyticsEventSerializer,
-    DashboardSummarySerializer,
-    BookingStatsSerializer,
-    RoomUtilizationSerializer,
-    TopUsersSerializer,
-)
-
-User = get_user_model()
+from bookings.models import Booking
+from rooms.models import Room
 
 
-class DashboardSummaryView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminUser]
+class DashboardView(APIView):
+    permission_classes = [IsAdminUser]
 
     def get(self, request):
-        from bookings.models import Booking
-        from rooms.models import Room
+        now = timezone.now()
+        start_of_week = now - timedelta(days=now.weekday())
+        start_of_month = now.replace(day=1)
 
-        data = {
-            'total_rooms': Room.objects.count(),
-            'total_bookings': Booking.objects.count(),
-            'total_users': User.objects.count(),
-            'active_bookings': Booking.objects.filter(status='active').count(),
-        }
-        serializer = DashboardSummarySerializer(data)
-        return Response(serializer.data)
+        # Basic counts
+        total_rooms = Room.objects.count()
+        total_bookings = Booking.objects.exclude(status='cancelled').count()
+        bookings_this_week = Booking.objects.filter(
+            created_at__gte=start_of_week,
+            status='confirmed'
+        ).count()
+        bookings_this_month = Booking.objects.filter(
+            created_at__gte=start_of_month,
+            status='confirmed'
+        ).count()
 
+        # Most popular room
+        popular_room = Booking.objects.filter(
+            status='confirmed'
+        ).values('room__name').annotate(
+            count=Count('id')
+        ).order_by('-count').first()
 
-class BookingStatsView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminUser]
-
-    def get(self, request):
-        from bookings.models import Booking
-
-        days = int(request.query_params.get('days', 30))
-        since = timezone.now() - timezone.timedelta(days=days)
-
-        stats = (
-            Booking.objects.filter(created_at__gte=since)
-            .annotate(date=TruncDate('created_at'))
-            .values('date')
-            .annotate(count=Count('id'))
-            .order_by('date')
+        # Bookings per room (for bar chart)
+        bookings_per_room = list(
+            Booking.objects.filter(
+                status='confirmed'
+            ).values('room__name').annotate(
+                count=Count('id')
+            ).order_by('-count')
         )
 
-        serializer = BookingStatsSerializer(stats, many=True)
-        return Response(serializer.data)
-
-
-class RoomUtilizationView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminUser]
-
-    def get(self, request):
-        from bookings.models import Booking
-        from rooms.models import Room
-
-        total_bookings = Booking.objects.count() or 1
-
-        rooms = (
-            Room.objects.annotate(total_bookings=Count('bookings'))
-            .values('id', 'name', 'total_bookings')
-            .order_by('-total_bookings')
+        # Peak hours (for line chart)
+        peak_hours = list(
+            Booking.objects.filter(
+                status='confirmed'
+            ).values('start_time').annotate(
+                count=Count('id')
+            ).order_by('start_time')
         )
 
-        data = [
-            {
-                'room_id': r['id'],
-                'room_name': r['name'],
-                'total_bookings': r['total_bookings'],
-                'utilization_rate': round(r['total_bookings'] / total_bookings * 100, 2),
-            }
-            for r in rooms
-        ]
-
-        serializer = RoomUtilizationSerializer(data, many=True)
-        return Response(serializer.data)
-
-
-class TopUsersView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminUser]
-
-    def get(self, request):
-        from bookings.models import Booking
-
-        limit = int(request.query_params.get('limit', 10))
-
-        users = (
-            User.objects.annotate(total_bookings=Count('bookings'))
-            .filter(total_bookings__gt=0)
-            .values('id', 'email', 'total_bookings')
-            .order_by('-total_bookings')[:limit]
+        # Recent bookings
+        recent_bookings = list(
+            Booking.objects.filter(
+                status='confirmed'
+            ).order_by('-created_at')[:5].values(
+                'room__name', 'date', 'start_time', 'end_time'
+            )
         )
 
-        data = [
-            {
-                'user_id': u['id'],
-                'email': u['email'],
-                'total_bookings': u['total_bookings'],
-            }
-            for u in users
-        ]
-
-        serializer = TopUsersSerializer(data, many=True)
-        return Response(serializer.data)
-
-
-class EventListView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminUser]
-
-    def get(self, request):
-        events = AnalyticsEvent.objects.select_related('user').all()[:100]
-        serializer = AnalyticsEventSerializer(events, many=True)
-        return Response(serializer.data)
-
-    def post(self, request):
-        serializer = AnalyticsEventSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save(user=request.user)
-        return Response(serializer.data, status=201)
+        return Response({
+            'total_rooms': total_rooms,
+            'total_bookings': total_bookings,
+            'bookings_this_week': bookings_this_week,
+            'bookings_this_month': bookings_this_month,
+            'most_popular_room': popular_room['room__name'] if popular_room else None,
+            'bookings_per_room': bookings_per_room,
+            'peak_hours': peak_hours,
+            'recent_bookings': recent_bookings,
+        })
