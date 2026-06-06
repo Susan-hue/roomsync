@@ -8,4 +8,5 @@ urlpatterns = [
     path('api/bookings/', include('bookings.urls')),
     path('api/notifications/', include('notifications.urls')),
     path('api/analytics/', include('analytics.urls')),
+    path('', include('django_prometheus.urls')),
 ]
