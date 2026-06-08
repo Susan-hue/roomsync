@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 from datetime import timedelta
+import dj_database_url
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -79,6 +81,9 @@ DATABASES = {
         'PASSWORD': os.environ.get('DB_PASSWORD', 'roomsync_password'),
         'HOST': os.environ.get('DB_HOST', 'localhost'),
         'PORT': os.environ.get('DB_PORT', '5432'),
+        'OPTIONS': {
+            'sslmode': os.environ.get('DB_SSLMODE', 'prefer'),
+        },
     }
 }
 
