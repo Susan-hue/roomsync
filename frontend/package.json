@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "postbuild": "mkdir -p .vercel/output/static .vercel/output/functions/__server.func && cp -a dist/client/. .vercel/output/static/ && cp -a dist/server/. .vercel/output/functions/__server.func/ && cp dist/config.json .vercel/output/config.json"
+    "postbuild": "bash scripts/vercel-postbuild.sh"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
